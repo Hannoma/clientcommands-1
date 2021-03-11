@@ -5,6 +5,7 @@ import net.earthcomputer.clientcommands.TempRules;
 import net.earthcomputer.clientcommands.task.LongTask;
 import net.earthcomputer.clientcommands.task.LongTaskList;
 import net.earthcomputer.clientcommands.task.OneTickTask;
+import net.earthcomputer.clientcommands.task.SimpleTask;
 import net.earthcomputer.clientcommands.task.TaskManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
@@ -355,11 +356,7 @@ public class EnchantmentCracker {
             }
             for (int i = 0; i < timesNeeded; i++) {
                 // throw the item once it's in the inventory
-                taskList.addTask(new LongTask() {
-                    @Override
-                    public void initialize() {
-                    }
-
+                taskList.addTask(new SimpleTask() {
                     @Override
                     public boolean condition() {
                         if (TempRules.playerCrackState != PlayerRandCracker.CrackState.MANIPULATING_ENCHANTMENTS) {
@@ -376,12 +373,7 @@ public class EnchantmentCracker {
                     }
 
                     @Override
-                    public void increment() {
-                    }
-
-                    @Override
-                    public void body() {
-                        scheduleDelay();
+                    protected void onTick() {
                     }
 
                     @Override
@@ -396,7 +388,7 @@ public class EnchantmentCracker {
                 @Override
                 public void initialize() {
                     TempRules.playerCrackState = PlayerRandCracker.CrackState.WAITING_DUMMY_ENCHANT;
-                    player.sendSystemMessage(new TranslatableText("enchCrack.insn.dummy"), Util.NIL_UUID);
+                    MinecraftClient.getInstance().player.sendSystemMessage(new TranslatableText("enchCrack.insn.dummy"), Util.NIL_UUID);
                     doneEnchantment = false;
                 }
 
@@ -422,9 +414,10 @@ public class EnchantmentCracker {
             @Override
             public void run() {
                 if (TempRules.enchCrackState == CrackState.CRACKED && doneEnchantment) {
-                    player.sendSystemMessage(new LiteralText(Formatting.BOLD + I18n.translate("enchCrack.insn.ready")), Util.NIL_UUID);
-                    player.sendSystemMessage(new TranslatableText("enchCrack.insn.bookshelves", bookshelvesNeeded_f), Util.NIL_UUID);
-                    player.sendSystemMessage(new TranslatableText("enchCrack.insn.slot", slot_f + 1), Util.NIL_UUID);
+                    ClientPlayerEntity p = MinecraftClient.getInstance().player;
+                    p.sendSystemMessage(new LiteralText(Formatting.BOLD + I18n.translate("enchCrack.insn.ready")), Util.NIL_UUID);
+                    p.sendSystemMessage(new TranslatableText("enchCrack.insn.bookshelves", bookshelvesNeeded_f), Util.NIL_UUID);
+                    p.sendSystemMessage(new TranslatableText("enchCrack.insn.slot", slot_f + 1), Util.NIL_UUID);
                 }
             }
         });

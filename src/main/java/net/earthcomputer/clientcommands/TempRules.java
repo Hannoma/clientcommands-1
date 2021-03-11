@@ -1,7 +1,10 @@
 package net.earthcomputer.clientcommands;
 
+import net.earthcomputer.clientcommands.features.ChorusManipulation;
 import net.earthcomputer.clientcommands.features.EnchantmentCracker;
+import net.earthcomputer.clientcommands.features.FishingCracker;
 import net.earthcomputer.clientcommands.features.PlayerRandCracker;
+import net.minecraft.util.StringIdentifiable;
 import net.minecraft.util.math.MathHelper;
 
 import java.lang.annotation.ElementType;
@@ -10,10 +13,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -41,6 +41,35 @@ public class TempRules {
             EnchantmentCracker.resetCracker();
     }
 
+    public enum FishingManipulation implements StringIdentifiable {
+        OFF,
+        MANUAL,
+        AFK;
+
+        @Override
+        public String asString() {
+            return this.name().toLowerCase(Locale.ROOT);
+        }
+
+        public boolean isEnabled() {
+            return this != OFF;
+        }
+    }
+
+    @Rule(setter = "setFishingManipulation")
+    private static FishingManipulation fishingManipulation = FishingManipulation.OFF;
+    public static FishingManipulation getFishingManipulation() {
+        return fishingManipulation;
+    }
+    public static void setFishingManipulation(FishingManipulation fishingManipulation) {
+        TempRules.fishingManipulation = fishingManipulation;
+        if (fishingManipulation.isEnabled()) {
+            ServerBrandManager.rngWarning();
+        } else {
+            FishingCracker.reset();
+        }
+    }
+
     @Rule
     public static boolean playerRNGMaintenance = true;
 
@@ -53,8 +82,18 @@ public class TempRules {
         TempRules.maxEnchantItemThrows = MathHelper.clamp(maxEnchantItemThrows, 0, 1000000);
     }
 
-    @Rule
-    public static boolean chorusManipulation = false;
+    @Rule(setter = "setChorusManipulation")
+    private static boolean chorusManipulation = false;
+    public static boolean getChorusManipulation() {
+        return chorusManipulation;
+    }
+    public static void setChorusManipulation(boolean chorusManipulation) {
+        TempRules.chorusManipulation = chorusManipulation;
+        if (chorusManipulation) {
+            ServerBrandManager.rngWarning();
+            ChorusManipulation.onChorusManipEnabled();
+        }
+    }
 
     @Rule(setter = "setMaxChorusItemThrows")
     public static int maxChorusItemThrows = 64 * 32;
@@ -64,6 +103,13 @@ public class TempRules {
 
     @Rule
     public static boolean infiniteTools = false;
+
+    public static String asString(Object value) {
+        if (value instanceof StringIdentifiable) {
+            return ((StringIdentifiable) value).asString();
+        }
+        return String.valueOf(value);
+    }
 
     public static Object get(String name) {
         Field field = rules.get(name);

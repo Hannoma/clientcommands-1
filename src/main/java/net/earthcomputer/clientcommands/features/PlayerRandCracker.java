@@ -2,6 +2,7 @@ package net.earthcomputer.clientcommands.features;
 
 import net.earthcomputer.clientcommands.TempRules;
 import net.earthcomputer.clientcommands.command.ClientCommandManager;
+import net.earthcomputer.clientcommands.interfaces.ICreativeSlot;
 import net.earthcomputer.multiconnect.api.MultiConnectAPI;
 import net.earthcomputer.multiconnect.api.Protocols;
 import net.minecraft.client.MinecraftClient;
@@ -29,6 +30,7 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 public class PlayerRandCracker {
 
@@ -114,12 +116,19 @@ public class PlayerRandCracker {
 
     public static void onEat(ItemStack stack, Vec3d pos, int particleCount, int itemUseTimeLeft) {
         if (canMaintainPlayerRNG()) {
+
+            if (itemUseTimeLeft < 0 && particleCount != 16) {
+                // We have accounted for all eating ticks, that on the server should be calculated
+                // Sometimes if the connection is laggy we eat more than 24 ticks so just hope for the best
+                return;
+            }
+
             //Every time a person eats, the particles are random, and when finished more particles spawn(16)
             for (int i = 0; i < particleCount * 3 + 3; i++) {
                 nextInt();
             }
 
-            if (TempRules.chorusManipulation && stack.getItem() == Items.CHORUS_FRUIT) {
+            if (TempRules.getChorusManipulation() && stack.getItem() == Items.CHORUS_FRUIT) {
                 ChorusManipulation.onEat(pos, particleCount, itemUseTimeLeft);
                 if (particleCount == 16) {
                     //Consumption randoms
@@ -315,11 +324,25 @@ public class PlayerRandCracker {
     }
 
     public static Slot getBestItemThrowSlot(List<Slot> slots) {
+        slots = slots.stream().filter(slot -> {
+            if (!slot.hasStack()) {
+                return false;
+            }
+            if (slot instanceof ICreativeSlot) {
+                return false;
+            }
+            if (EnchantmentHelper.getLevel(Enchantments.BINDING_CURSE, slot.getStack()) != 0) {
+                return false;
+            }
+            if (slot.getStack().getItem() == Items.CHORUS_FRUIT) {
+                return false;
+            }
+            return true;
+        }).collect(Collectors.toList());
+
         Map<Item, Integer> itemCounts = new HashMap<>();
         for (Slot slot : slots) {
-            if (slot.hasStack() && EnchantmentHelper.getLevel(Enchantments.BINDING_CURSE, slot.getStack()) == 0 && slot.getStack().getItem() != Items.CHORUS_FRUIT) {
-                itemCounts.put(slot.getStack().getItem(), itemCounts.getOrDefault(slot.getStack().getItem(), 0) + slot.getStack().getCount());
-            }
+            itemCounts.put(slot.getStack().getItem(), itemCounts.getOrDefault(slot.getStack().getItem(), 0) + slot.getStack().getCount());
         }
         if (itemCounts.isEmpty())
             return null;
@@ -379,7 +402,7 @@ public class PlayerRandCracker {
         public enum Type {
             NOT_ENOUGH_ITEMS(false, "playerManip.notEnoughItems"),
             NOT_POSSIBLE(false, "playerManip.throwError"),
-            UNKNOWN_SEED(false, "commands.cenchant.uncracked"),
+            UNKNOWN_SEED(false, "playerManip.uncracked"),
             SUCCESS(true, null),
             ;
 

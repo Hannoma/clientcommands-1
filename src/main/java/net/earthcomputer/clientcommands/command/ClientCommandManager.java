@@ -1,10 +1,15 @@
 package net.earthcomputer.clientcommands.command;
 
 import com.mojang.brigadier.StringReader;
+import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import net.earthcomputer.clientcommands.interfaces.IServerCommandSource;
+import net.earthcomputer.clientcommands.mixin.InGameHudAccessor;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.command.CommandException;
+import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.*;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
@@ -28,16 +33,38 @@ public class ClientCommandManager {
         return clientSideCommands.contains(name);
     }
 
+    public static boolean getFlag(CommandContext<ServerCommandSource> ctx, int flag) {
+        return getFlag(ctx.getSource(), flag);
+    }
+
+    public static boolean getFlag(ServerCommandSource source, int flag) {
+        return (((IServerCommandSource) source).getLevel() & flag) != 0;
+    }
+
+    public static ServerCommandSource withFlags(ServerCommandSource source, int flags, boolean value) {
+        if (value) {
+            return source.withLevel(((IServerCommandSource) source).getLevel() | flags);
+        } else {
+            return source.withLevel(((IServerCommandSource) source).getLevel() & ~flags);
+        }
+    }
+
     public static void sendError(Text error) {
         sendFeedback(new LiteralText("").append(error).formatted(Formatting.RED));
     }
 
-    public static void sendFeedback(String message) {
-        sendFeedback(new TranslatableText(message));
+    public static void sendFeedback(String message, Object... args) {
+        sendFeedback(new TranslatableText(message, args));
     }
 
     public static void sendFeedback(Text message) {
         MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(message);
+    }
+
+    public static void addOverlayMessage(Text message, int time) {
+        InGameHud inGameHud = MinecraftClient.getInstance().inGameHud;
+        inGameHud.setOverlayMessage(message, false);
+        ((InGameHudAccessor) inGameHud).setOverlayRemaining(time);
     }
 
     public static int executeCommand(StringReader reader, String command) {
@@ -72,17 +99,22 @@ public class ClientCommandManager {
         return 1;
     }
 
-    public static Text getCoordsTextComponent(BlockPos pos) {
-        return new TranslatableText("commands.client.blockpos", pos.getX(), pos.getY(), pos.getZ()).styled(style -> style
-                .withFormatting(Formatting.UNDERLINE)
-                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
-                        String.format("/clook block %d %d %d", pos.getX(), pos.getY(), pos.getZ())))
-                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                        new LiteralText(String.format("/clook block %d %d %d", pos.getX(), pos.getY(), pos.getZ())))));
+    public static Text getLookCoordsTextComponent(BlockPos pos) {
+        return getCommandTextComponent(new TranslatableText("commands.client.blockpos", pos.getX(), pos.getY(), pos.getZ()),
+                String.format("/clook block %d %d %d", pos.getX(), pos.getY(), pos.getZ()));
+    }
+
+    public static Text getGlowCoordsTextComponent(BlockPos pos) {
+        return getCommandTextComponent(new TranslatableText("commands.client.blockpos", pos.getX(), pos.getY(), pos.getZ()),
+                String.format("/cglow block %d %d %d 10", pos.getX(), pos.getY(), pos.getZ()));
     }
 
     public static Text getCommandTextComponent(String translationKey, String command) {
-        return new TranslatableText(translationKey).styled(style -> style.withFormatting(Formatting.UNDERLINE)
+        return getCommandTextComponent(new TranslatableText(translationKey), command);
+    }
+
+    public static Text getCommandTextComponent(TranslatableText translatableText, String command) {
+        return translatableText.styled(style -> style.withFormatting(Formatting.UNDERLINE)
                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command))
                 .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new LiteralText(command))));
     }

@@ -5,10 +5,9 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import net.earthcomputer.clientcommands.GuiBlocker;
-import net.earthcomputer.clientcommands.interfaces.IServerCommandSource;
 import net.earthcomputer.clientcommands.MathUtil;
 import net.earthcomputer.clientcommands.mixin.ScreenHandlerAccessor;
-import net.earthcomputer.clientcommands.task.LongTask;
+import net.earthcomputer.clientcommands.task.SimpleTask;
 import net.earthcomputer.clientcommands.task.TaskManager;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -61,14 +60,14 @@ public class FindItemCommand {
         LiteralCommandNode<ServerCommandSource> cfinditem = dispatcher.register(literal("cfinditem"));
         dispatcher.register(literal("cfinditem")
                 .then(literal("--no-search-shulker-box")
-                        .redirect(cfinditem, ctx -> ctx.getSource().withLevel(((IServerCommandSource) ctx.getSource()).getLevel() | FLAG_NO_SEARCH_SHULKER_BOX)))
+                        .redirect(cfinditem, ctx -> withFlags(ctx.getSource(), FLAG_NO_SEARCH_SHULKER_BOX, true)))
                 .then(literal("--keep-searching")
-                        .redirect(cfinditem, ctx -> ctx.getSource().withLevel(((IServerCommandSource) ctx.getSource()).getLevel() | FLAG_KEEP_SEARCHING)))
+                        .redirect(cfinditem, ctx -> withFlags(ctx.getSource(), FLAG_KEEP_SEARCHING, true)))
                 .then(argument("item", withString(clientItemPredicate()))
                         .executes(ctx ->
                                 findItem(ctx,
-                                        (((IServerCommandSource) ctx.getSource()).getLevel() & FLAG_NO_SEARCH_SHULKER_BOX) != 0,
-                                        (((IServerCommandSource) ctx.getSource()).getLevel() & FLAG_KEEP_SEARCHING) != 0,
+                                        getFlag(ctx, FLAG_NO_SEARCH_SHULKER_BOX),
+                                        getFlag(ctx, FLAG_KEEP_SEARCHING),
                                         getWithString(ctx, "item", ItemPredicateArgument.class)))));
     }
 
@@ -85,7 +84,7 @@ public class FindItemCommand {
         return 0;
     }
 
-    private static class FindItemsTask extends LongTask {
+    private static class FindItemsTask extends SimpleTask {
         private final String searchingForName;
         private final Predicate<ItemStack> searchingFor;
         private final boolean searchShulkerBoxes;
@@ -95,6 +94,7 @@ public class FindItemCommand {
         private Set<BlockPos> searchedBlocks = new HashSet<>();
         private BlockPos currentlySearching = null;
         private int currentlySearchingTimeout;
+        private boolean hasSearchedEnderChest = false;
 
         public FindItemsTask(String searchingForName, Predicate<ItemStack> searchingFor, boolean searchShulkerBoxes, boolean keepSearching) {
             this.searchingForName = searchingForName;
@@ -104,20 +104,12 @@ public class FindItemCommand {
         }
 
         @Override
-        public void initialize() {
-        }
-
-        @Override
         public boolean condition() {
             return true;
         }
 
         @Override
-        public void increment() {
-        }
-
-        @Override
-        public void body() {
+        protected void onTick() {
             World world = MinecraftClient.getInstance().world;
             Entity entity = MinecraftClient.getInstance().cameraEntity;
             if (entity == null) {
@@ -126,11 +118,9 @@ public class FindItemCommand {
             }
             if (currentlySearchingTimeout > 0) {
                 currentlySearchingTimeout--;
-                scheduleDelay();
                 return;
             }
             if (MinecraftClient.getInstance().player.isSneaking()) {
-                scheduleDelay();
                 return;
             }
             Vec3d origin = entity.getCameraPosVec(0);
@@ -149,12 +139,17 @@ public class FindItemCommand {
                             continue;
                         if (searchedBlocks.contains(pos))
                             continue;
-                        Vec3d closestPos = MathUtil.getClosestPoint(pos, world.getBlockState(pos).getOutlineShape(world, pos), origin);
+                        BlockState state = world.getBlockState(pos);
+                        Vec3d closestPos = MathUtil.getClosestPoint(pos, state.getOutlineShape(world, pos), origin);
                         if (closestPos.squaredDistanceTo(origin) > reachDistance * reachDistance)
                             continue;
                         searchedBlocks.add(pos);
-                        BlockState state = world.getBlockState(pos);
-                        if (state.getBlock() instanceof ChestBlock && state.get(ChestBlock.CHEST_TYPE) != ChestType.SINGLE) {
+                        if (state.getBlock() == Blocks.ENDER_CHEST) {
+                            if (hasSearchedEnderChest) {
+                                continue;
+                            }
+                            hasSearchedEnderChest = true;
+                        } else if (state.getBlock() instanceof ChestBlock && state.get(ChestBlock.CHEST_TYPE) != ChestType.SINGLE) {
                             BlockPos offsetPos = pos.offset(ChestBlock.getFacing(state));
                             if (world.getBlockState(offsetPos).getBlock() == state.getBlock())
                                 searchedBlocks.add(offsetPos);
@@ -165,10 +160,9 @@ public class FindItemCommand {
                     }
                 }
             }
-            if (!keepSearching)
+            if (!keepSearching) {
                 _break();
-            else
-                scheduleDelay();
+            }
         }
 
         private boolean canSearch(World world, BlockPos pos) {
@@ -232,7 +226,7 @@ public class FindItemCommand {
                             }
                             if (matchingItems > 0) {
                                 sendFeedback(new TranslatableText("commands.cfinditem.match.left", matchingItems, searchingForName)
-                                        .append(getCoordsTextComponent(currentlySearching))
+                                        .append(getLookCoordsTextComponent(currentlySearching))
                                         .append(new TranslatableText("commands.cfinditem.match.right", matchingItems, searchingForName)));
                                 totalFound += matchingItems;
                             }
